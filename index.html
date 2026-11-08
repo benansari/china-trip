@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>China Spring 2027</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a field atlas. Top bar with plan switch, a status card beside the map, then stats, legs, calendar and a plan comparison. */
+:root{
+  --bg:#F2F4F1; --surface:#FFFFFF; --ink:#18211E; --muted:#5D6B66; --line:#D9DFDB; --land:#E4E9E5; --land-edge:#C5CEC9;
+  --accent:#2F6F61;
+  --bj:#B4432E; --hn:#2E7D8C; --gx:#4E8B3A; --yn:#C08422; --transit:#8A9692;
+  --flight:#6C4FA3; --train:#18211E; --road:#8A6D3B;
+  /* map overlay colours sit on satellite imagery, so they are the same in both themes */
+  --ocean:#0B1B33; --m-flight:#E2D4FF; --m-train:#FFFFFF; --m-road:#FFC861; --m-edge:rgba(255,255,255,.22); --m-border:#FFE7A8;
+  --display:"Instrument Serif", "Iowan Old Style", Georgia, serif;
+  --body:"Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#111715; --surface:#19211E; --ink:#E7ECE9; --muted:#9AA8A2; --line:#2B3632; --land:#202A27; --land-edge:#36423D;
+  --accent:#6CC2AC; --bj:#E0745D; --hn:#5DB3C2; --gx:#86BE6C; --yn:#E3AE4C; --transit:#7D8A86;
+  --flight:#A891DB; --train:#E7ECE9; --road:#C9A970; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#111715; --surface:#19211E; --ink:#E7ECE9; --muted:#9AA8A2; --line:#2B3632; --land:#202A27; --land-edge:#36423D;
+  --accent:#6CC2AC; --bj:#E0745D; --hn:#5DB3C2; --gx:#86BE6C; --yn:#E3AE4C; --transit:#7D8A86;
+  --flight:#A891DB; --train:#E7ECE9; --road:#C9A970; color-scheme:dark }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2{font-family:var(--display);font-weight:400;margin:0;text-wrap:balance;letter-spacing:.005em}
+h1{font-size:clamp(2.4rem,6vw,3.6rem);line-height:1}
+h2{font-size:1.9rem;line-height:1.1}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:600}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding-bottom:18px}
+.sub{color:var(--muted);margin-top:8px}
+.sub b{color:var(--ink);font-weight:600}
+.switch{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;gap:4px}
+.switch button{border:0;background:transparent;padding:8px 16px;border-radius:999px;cursor:pointer;font-weight:600;font-size:.9rem;color:var(--muted)}
+.switch button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.plan-blurb{font-size:.9rem;color:var(--muted);max-width:52ch;margin-top:6px}
+
+.hero{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start}
+.mapbox{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-width:0}
+.mapstage{position:relative;overflow:hidden;background:var(--ocean)}
+#map{position:relative;width:100%;height:600px;background:var(--ocean)}
+.whole{position:absolute;left:12px;bottom:14px;z-index:500;border:0;border-radius:999px;padding:8px 14px;font-weight:600;font-size:.85rem;background:var(--surface);color:var(--ink);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.leaflet-tooltip.stop-label{background:rgba(255,255,255,.92);color:#18211E;border:0;border-radius:4px;padding:2px 6px;font:500 12px var(--body);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.leaflet-tooltip.stop-label.on{font-weight:700;background:#fff}
+.leaflet-tooltip.stop-label::before{display:none}
+.leaflet-container{font-family:var(--body)}
+.legend .ln{border-radius:2px;outline:3px solid var(--ocean);background:var(--ocean)}
+.credit{font-size:.7rem;color:var(--muted);padding:0 16px 10px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;padding:12px 16px;border-top:1px solid var(--line);font-size:.8rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:50%;display:inline-block}
+.ln{width:22px;height:0;border-top:2px solid;display:inline-block}
+.gmap{position:absolute;right:14px;bottom:24px;z-index:500;display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:600;text-decoration:none;color:var(--bg);background:var(--ink);padding:8px 14px;border-radius:999px}
+.gmap:hover{opacity:.9}
+.map-note{position:absolute;left:14px;top:12px;font-size:.75rem;color:var(--muted);background:var(--surface);padding:2px 8px;border-radius:6px;border:1px solid var(--line)}
+
+.status{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px}
+.count{font-family:var(--display);font-size:4rem;line-height:.9}
+.count small{font-family:var(--body);font-size:.9rem;color:var(--muted);margin-left:6px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:.9rem;margin-top:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-weight:500}
+.detail h3{margin:0;font-family:var(--display);font-weight:400;font-size:1.6rem;line-height:1.1}
+.detail .when{font-size:.8rem;color:var(--muted);margin-bottom:6px}
+.detail p{margin:10px 0 0}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:.75rem;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:var(--bg)}
+.chip .sw{width:8px;height:8px}
+.travel{margin-top:10px;font-size:.85rem;padding:8px 10px;border-radius:8px;background:var(--bg);border:1px dashed var(--line)}
+.note{margin-top:8px;font-size:.85rem;color:var(--muted)}
+
+.stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.stat{background:var(--surface);padding:14px 16px}
+.stat b{display:block;font-family:var(--display);font-weight:400;font-size:2.2rem;line-height:1}
+.stat span{font-size:.8rem;color:var(--muted)}
+
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.legs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.leg{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.leg:hover{border-color:var(--muted)}
+.leg[aria-current="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.leg .num{font-family:var(--mono);font-size:.75rem;color:var(--muted);grid-row:span 2}
+.leg .nm{font-weight:600}
+.leg .nt{font-family:var(--display);font-size:1.5rem;line-height:1;grid-row:span 2;text-align:right}
+.leg .nt small{display:block;font-family:var(--body);font-size:.7rem;color:var(--muted)}
+.leg .dt{font-size:.8rem;color:var(--muted)}
+.leg .bar{grid-column:1/-1;height:3px;border-radius:3px;margin-top:6px}
+
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.dow{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);text-align:center;padding-bottom:2px}
+.day{all:unset;box-sizing:border-box;cursor:pointer;min-height:84px;border-radius:10px;padding:8px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden;min-width:0}
+.day.off{cursor:default;background:transparent;border-style:dashed;opacity:.5}
+.day .dn{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.day .pl{font-size:.8rem;font-weight:600;line-height:1.2;overflow-wrap:anywhere}
+.day .stripe{position:absolute;left:0;top:0;bottom:0;width:4px}
+.day .mode{position:absolute;right:7px;top:6px;font-size:.7rem;font-family:var(--mono);color:var(--muted)}
+.day[aria-current="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.day.hol::after{content:"Qingming";position:absolute;right:6px;bottom:5px;font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;color:var(--bj)}
+.cal-key{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.8rem;color:var(--muted);margin-top:10px}
+
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.cmp h3{margin:0 0 4px;font-family:var(--display);font-weight:400;font-size:1.5rem}
+.cmp .tag{font-size:.85rem;color:var(--muted);margin-bottom:12px}
+.stack{display:flex;height:28px;border-radius:6px;overflow:hidden;gap:2px}
+.stack div{display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:600;color:#fff;min-width:0}
+.cmp ul{margin:12px 0 0;padding-left:18px;font-size:.9rem}
+.cmp li{margin:3px 0}
+.cmp.active{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+footer{font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+footer a{color:var(--accent)}
+
+@media (max-width:900px){.hero{grid-template-columns:1fr}.stats{grid-template-columns:repeat(3,minmax(0,1fr))}#map{height:440px}}
+@media (max-width:560px){.compare{grid-template-columns:1fr}.cal{gap:3px}.day{min-height:66px;padding:5px 5px 5px 8px}.day .pl{font-size:.68rem}.day .mode{display:none}.day.hol::after{display:none}#map{height:360px}.count{font-size:3.2rem}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Ben &amp; wife · Spring 2027</div>
+      <h1>China, mountains and karst</h1>
+      <div class="sub"><span class="mono">26 Mar – 14 Apr 2027</span> · <b id="h-nights">18 nights</b> · <b id="h-legs"></b></div>
+    </div>
+    <div>
+      <div class="switch" role="group" aria-label="Choose a plan">
+        <button id="btn-a" type="button" aria-pressed="true">Plan A · Beijing + mountains</button>
+        <button id="btn-b" type="button" aria-pressed="false">Plan B · Mountains only</button>
+      </div>
+      <div class="plan-blurb" id="plan-blurb"></div>
+    </div>
+  </header>
+
+  <section class="hero" aria-label="Map and status">
+    <div class="mapbox">
+      <div class="mapstage"><div id="map" aria-label="Satellite map of China with the trip's stops and route"></div><button type="button" class="whole" id="whole">Whole trip</button></div>
+      <a class="gmap" href="https://www.google.com/maps/d/viewer?mid=1vpP6XRXOJ0A4EFrjgLr_-UNJSEg91ts" target="_blank" rel="noopener">View on Google Maps ↗</a>
+      <div class="legend" id="legend"></div>
+      <div class="credit">Scroll or pinch to zoom; switch Satellite, Terrain or Street map at the top right. Province outlines: Apache ECharts map data.</div>
+    </div>
+    <div class="status">
+      <div class="card">
+        <div class="eyebrow">Countdown</div>
+        <div class="count mono" id="countdown">–</div>
+        <dl class="kv">
+          <dt>Fly out</dt><dd id="k-out"></dd>
+          <dt>First stop</dt><dd id="k-first"></dd>
+          <dt>Fly home</dt><dd id="k-home"></dd>
+          <dt>Visa</dt><dd>Check the 30-day visa-free rule is extended past Dec 2026</dd>
+        </dl>
+      </div>
+      <div class="card detail" id="detail" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section aria-label="Trip totals"><div class="stats" id="stats"></div></section>
+
+  <section>
+    <div class="section-head"><h2>Legs</h2><span class="eyebrow">Tap a leg to see it on the map</span></div>
+    <div class="legs" id="legs"></div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Day by day</h2><span class="eyebrow">Tap a day for its plan</span></div>
+    <div class="cal" id="cal"></div>
+    <div class="cal-key">
+      <span>✈ flight</span><span>🚆 train</span><span>⛰ hike</span><span>🚌 road</span><span style="color:var(--bj)">Qingming holiday, expect crowds</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head"><h2>Plan A or Plan B</h2><span class="eyebrow">Nights by province</span></div>
+    <div class="compare" id="compare"></div>
+  </section>
+
+  <footer>Satellite and terrain view: <a href="https://www.google.com/maps/d/viewer?mid=1vpP6XRXOJ0A4EFrjgLr_-UNJSEg91ts" target="_blank" rel="noopener">China 2027 on Google My Maps</a> (needs a VPN inside China). Plans mirror the <a href="https://docs.google.com/spreadsheets/d/10eaJDTF-fRra5PhyOrD8n7364Uj391nhz_uEAhMzYNs/edit" target="_blank" rel="noopener">China Trip 2027 sheet</a>. Coordinates are approximate. Travel times are estimates; check Trip.com or 12306 when booking.</footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>window.echarts={registerMap:function(n,j){window.__CHINA=j}};</script>
+<script src="china-provinces.js"></script>
+<script>
+const PROV={
+  Beijing:{cn:"北京",tok:"--bj"}, Hunan:{cn:"湖南",tok:"--hn"}, Guangxi:{cn:"广西",tok:"--gx"}, Yunnan:{cn:"云南",tok:"--yn"}
+};
+const STOPS={
+  beijing:{name:"Beijing",prov:"Beijing",ll:[116.4074,39.9042]},
+  wall:{name:"Great Wall (Mutianyu)",prov:"Beijing",ll:[116.5704,40.4319]},
+  guangzhou:{name:"Guangzhou",prov:null,ll:[113.2644,23.1291]},
+  zjj:{name:"Zhangjiajie",prov:"Hunan",ll:[110.4792,29.117]},
+  wuling:{name:"Wulingyuan",prov:"Hunan",ll:[110.5458,29.3497]},
+  fenghuang:{name:"Fenghuang",prov:"Hunan",ll:[109.5996,27.948]},
+  guilin:{name:"Guilin",prov:null,ll:[110.2993,25.2742]},
+  yangshuo:{name:"Yangshuo",prov:"Guangxi",ll:[110.4966,24.7781]},
+  longji:{name:"Longji terraces",prov:"Guangxi",ll:[110.13,25.77]},
+  lijiang:{name:"Lijiang",prov:"Yunnan",ll:[100.2299,26.8721]},
+  halfway:{name:"Halfway Guest House",prov:"Yunnan",ll:[100.105,27.205]},
+  shangri:{name:"Shangri-La",prov:"Yunnan",ll:[99.7065,27.8269]},
+  dali:{name:"Dali",prov:"Yunnan",ll:[100.2676,25.6065]},
+  kunming:{name:"Kunming",prov:null,ll:[102.7183,25.0389]}
+};
+// d: day of month offset from 26 Mar; s: where you sleep; p: plans; t: travel; m: mode icon
+const PLANS={
+ a:{label:"Plan A",title:"Beijing + mountains",blurb:"Into Beijing for the Forbidden City and the Great Wall, then Zhangjiajie, Yangshuo and Yunnan. Home from Kunming.",
+  days:[
+   {s:"plane",p:"Depart Vancouver",t:"Flight YVR to Beijing (direct, about 11–12 h)",m:"✈"},
+   {s:"beijing",p:"Arrive, check in, easy evening walk around Qianmen or Wangfujing",t:"Airport express or taxi into the city",n:"Jet lag day"},
+   {s:"beijing",p:"Forbidden City, then Jingshan Park for the view over it, hutong alleys",n:"Book Forbidden City tickets 7 days ahead with your passport"},
+   {s:"beijing",p:"Great Wall day: Mutianyu (cable car, toboggan) or Jinshanling (wilder, quieter)",t:"Driver or tour bus, 1.5–2.5 h each way",m:"🚌",to:"wall"},
+   {s:"beijing",p:"Temple of Heaven in the morning, Summer Palace in the afternoon, Peking duck dinner"},
+   {s:"zjj",p:"Travel day, rest",t:"Flight Beijing to Zhangjiajie (about 2.5 h)",m:"✈"},
+   {s:"wuling",p:"Tianmen Mountain: long cable car, Heaven's Gate, cliff walkways. Move to Wulingyuan in the evening",t:"About 45 min drive",m:"🚌"},
+   {s:"wuling",p:"National Forest Park: Yuanjiajie (the Avatar pillars), Bailong Elevator, Tianzi Mountain",n:"Mist makes the pillars look like they float"},
+   {s:"yangshuo",p:"Early morning in the park, then travel to Yangshuo",t:"Train Zhangjiajie West to Guilin (about 4–6 h), then about 1 h to Yangshuo",m:"🚆",n:"Qingming holiday crowds around Apr 3–5"},
+   {s:"yangshuo",p:"Bamboo raft on the Yulong River, bike through the villages and karst fields"},
+   {s:"yangshuo",p:"Li River at Xingping (the view on the 20 yuan note), optional Xianggong Hill sunrise",n:"Book the raft or cruise ahead"},
+   {s:"lijiang",p:"Travel day, evening in Lijiang old town",t:"Transfer to Guilin airport, direct flight Guilin to Lijiang",m:"✈"},
+   {s:"lijiang",p:"Old town, Shuhe and Baisha villages, Black Dragon Pool",n:"Optional: Jade Dragon Snow Mountain"},
+   {s:"halfway",p:"Tiger Leaping Gorge High Trail, up the 28 Bends to Halfway (6–7 h hike)",t:"Bus Lijiang to Qiaotou, about 2 h",m:"⛰",n:"Leave big bags at a Qiaotou guesthouse"},
+   {s:"halfway",p:"Slow day: views from the terrace, short walk to the waterfall"},
+   {s:"shangri",p:"Hike down to Tina's and the Middle Gorge, then on to Shangri-La",t:"Car or bus, about 2.5 h",m:"🚌"},
+   {s:"shangri",p:"Songzanlin Monastery, Dukezong old town",n:"Altitude about 3,200 m; take it easy"},
+   {s:"dali",p:"Travel to Dali, evening in the old town",t:"Train via Lijiang, about 3 h",m:"🚆"},
+   {s:"dali",p:"Bike along Erhai Lake, Xizhou village"},
+   {s:"home",p:"Fly home",t:"Train Dali to Kunming (about 2 h), then Kunming to Vancouver with one connection",m:"✈"}
+  ],
+  route:[["beijing","wall","road",1],["beijing","zjj","flight"],["zjj","wuling","road"],["wuling","guilin","train"],["guilin","yangshuo","road"],["yangshuo","guilin","road",1],["guilin","lijiang","flight"],["lijiang","halfway","road"],["halfway","shangri","road"],["shangri","dali","train"],["dali","kunming","train"]],
+  inOut:{in:"Vancouver → Beijing, direct",first:"Beijing",home:"Kunming → Vancouver, one connection"},
+  pros:["Forbidden City, Great Wall, Temple of Heaven","Direct flight in","Two flights inside China"]
+ },
+ b:{label:"Plan B",title:"Mountains only",blurb:"Skip Beijing and give those days to Hunan, Guangxi and Yunnan: Fenghuang, the Longji terraces, more time in Wulingyuan and Dali.",
+  days:[
+   {s:"plane",p:"Depart Vancouver",t:"Flight YVR to Guangzhou or Shanghai, then connect to Zhangjiajie",m:"✈"},
+   {s:"zjj",p:"Arrive, rest",t:"Connecting flight to Zhangjiajie (about 2 h)",m:"✈",n:"Long travel day; keep the evening free"},
+   {s:"wuling",p:"Tianmen Mountain: long cable car, Heaven's Gate, cliff walkways. Move to Wulingyuan in the evening",t:"About 45 min drive",m:"🚌"},
+   {s:"wuling",p:"National Forest Park: Yuanjiajie (the Avatar pillars), Bailong Elevator, Tianzi Mountain",n:"A weekday, so fewer crowds"},
+   {s:"wuling",p:"Golden Whip Stream walk, Yangjiajie, or the Grand Canyon glass bridge"},
+   {s:"fenghuang",p:"Fenghuang ancient town, evening along the river with its lit-up stilt houses",t:"High-speed train from Zhangjiajie West, about 1–1.5 h",m:"🚆"},
+   {s:"yangshuo",p:"Morning walk in Fenghuang, then travel to Yangshuo",t:"Train Fenghuang to Guilin (about 4–5 h), then about 1 h to Yangshuo",m:"🚆"},
+   {s:"yangshuo",p:"Bamboo raft on the Yulong River, bike through the villages and karst fields"},
+   {s:"yangshuo",p:"Li River at Xingping (the view on the 20 yuan note), optional Xianggong Hill sunrise",n:"Qingming holiday crowds around Apr 3–5"},
+   {s:"longji",p:"Walk between Dazhai and Tiantouzhai villages",t:"Car, about 3 h",m:"🚌",n:"Terraces are flooded in spring and reflect the sky"},
+   {s:"lijiang",p:"Early terrace walk, then fly to Lijiang",t:"Car to Guilin airport (about 2 h), direct flight to Lijiang",m:"✈"},
+   {s:"lijiang",p:"Old town, Shuhe and Baisha villages, Black Dragon Pool",n:"Optional: Jade Dragon Snow Mountain"},
+   {s:"halfway",p:"Tiger Leaping Gorge High Trail, up the 28 Bends to Halfway (6–7 h hike)",t:"Bus Lijiang to Qiaotou, about 2 h",m:"⛰",n:"Leave big bags at a Qiaotou guesthouse"},
+   {s:"halfway",p:"Slow day: views from the terrace, short walk to the waterfall"},
+   {s:"shangri",p:"Hike down to Tina's and the Middle Gorge, then on to Shangri-La",t:"Car or bus, about 2.5 h",m:"🚌"},
+   {s:"shangri",p:"Songzanlin Monastery, Dukezong old town, optional Pudacuo National Park",n:"Altitude about 3,200 m; take it easy"},
+   {s:"dali",p:"Travel to Dali, evening in the old town",t:"Train via Lijiang, about 3 h",m:"🚆"},
+   {s:"dali",p:"Bike along Erhai Lake, Xizhou village"},
+   {s:"dali",p:"Cangshan cable car or a hike on the Cangshan trail"},
+   {s:"home",p:"Fly home",t:"Train Dali to Kunming (about 2 h), then Kunming to Vancouver with one connection",m:"✈"}
+  ],
+  route:[["guangzhou","zjj","flight"],["zjj","wuling","road"],["wuling","fenghuang","train"],["fenghuang","guilin","train"],["guilin","yangshuo","road"],["yangshuo","longji","road"],["longji","guilin","road"],["guilin","lijiang","flight"],["lijiang","halfway","road"],["halfway","shangri","road"],["shangri","dali","train"],["dali","kunming","train"]],
+  inOut:{in:"Vancouver → Zhangjiajie, one connection",first:"Zhangjiajie",home:"Kunming → Vancouver, one connection"},
+  pros:["Fenghuang ancient town and Longji terraces","Three days in Wulingyuan, three nights in Dali","One more hotel move than Plan A"]
+ }
+};
+const START=new Date(2027,2,26), HOLIDAY=new Set(["2027-04-03","2027-04-04","2027-04-05"]);
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"], DOWS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const dateOf=i=>{const d=new Date(START);d.setDate(d.getDate()+i);return d};
+const iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const fmt=d=>`${DOWS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+const short=d=>`${d.getDate()} ${MONTHS[d.getMonth()]}`;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const provColor=p=>p&&PROV[p]?css(PROV[p].tok):css("--transit");
+
+let plan="a", selDay=null, selLeg=null;
+
+function legsOf(P){
+  const legs=[];
+  P.days.forEach((d,i)=>{
+    if(d.s==="plane"||d.s==="home")return;
+    const last=legs[legs.length-1];
+    if(last&&last.s===d.s&&last.end===i-1){last.end=i;last.n++}
+    else legs.push({s:d.s,start:i,end:i,n:1});
+  });
+  return legs;
+}
+
+function renderHeader(){
+  const P=PLANS[plan], legs=legsOf(P);
+  document.getElementById("btn-a").setAttribute("aria-pressed",plan==="a");
+  document.getElementById("btn-b").setAttribute("aria-pressed",plan==="b");
+  document.getElementById("plan-blurb").textContent=P.blurb;
+  document.getElementById("h-legs").textContent=`${legs.length} stops`;
+  document.getElementById("k-out").textContent="Fri 26 Mar · "+P.inOut.in;
+  document.getElementById("k-first").textContent=P.inOut.first;
+  document.getElementById("k-home").textContent="Wed 14 Apr · "+P.inOut.home;
+  const now=new Date(); now.setHours(0,0,0,0);
+  const days=Math.round((START-now)/864e5);
+  const end=dateOf(19);
+  const cd=document.getElementById("countdown");
+  if(days>0) cd.innerHTML=`${days}<small>days to go</small>`;
+  else if(now<=end) cd.innerHTML=`Day ${1-days}<small>of 20</small>`;
+  else cd.innerHTML=`Home<small>welcome back</small>`;
+}
+
+function renderStats(){
+  const P=PLANS[plan], legs=legsOf(P);
+  const nights=P.days.filter(d=>d.s!=="plane"&&d.s!=="home").length;
+  const provs=new Set(legs.map(l=>STOPS[l.s].prov));
+  const flights=P.route.filter(r=>r[2]==="flight").length;
+  const trains=P.route.filter(r=>r[2]==="train").length;
+  const hikes=P.days.filter(d=>d.m==="⛰").length;
+  const items=[[nights,"nights"],[legs.length,"stops"],[provs.size,"provinces"],[flights,"flights in China"],[trains,"train rides"],[legs.length-1,"hotel moves"]];
+  document.getElementById("stats").innerHTML=items.map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+}
+
+function renderLegs(){
+  const P=PLANS[plan], legs=legsOf(P);
+  const el=document.getElementById("legs"); el.innerHTML="";
+  legs.forEach((l,i)=>{
+    const st=STOPS[l.s], b=document.createElement("button");
+    b.type="button"; b.className="leg"; b.setAttribute("aria-current",selLeg===l.s);
+    b.innerHTML=`<span class="num">${String(i+1).padStart(2,"0")}</span><span class="nm">${st.name}</span><span class="nt">${l.n}<small>${l.n>1?"nights":"night"}</small></span><span class="dt">${short(dateOf(l.start))} – ${short(dateOf(l.end+1))} · ${st.prov}</span><span class="bar" style="background:${provColor(st.prov)}"></span>`;
+    b.onclick=()=>{selLeg=selLeg===l.s?null:l.s; selDay=selLeg?l.start:null; renderAll(false); focusStop(selLeg)};
+    el.appendChild(b);
+  });
+}
+
+function renderCal(){
+  const P=PLANS[plan], el=document.getElementById("cal");
+  let h=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>`<div class="dow">${d}</div>`).join("");
+  const first=new Date(2027,2,22), last=new Date(2027,3,18);
+  for(let d=new Date(first); d<=last; d.setDate(d.getDate()+1)){
+    const i=Math.round((d-START)/864e5);
+    if(i<0||i>19){h+=`<div class="day off" aria-hidden="true"><span class="dn">${d.getDate()}${d.getDate()===1?" Apr":""}</span></div>`;continue}
+    const day=P.days[i], st=STOPS[day.s], prov=st?st.prov:null;
+    const label=day.s==="plane"?"Flying out":day.s==="home"?"Flying home":st.name;
+    h+=`<button type="button" class="day${HOLIDAY.has(iso(d))?" hol":""}" data-i="${i}" aria-current="${selDay===i}" aria-label="${fmt(d)}: ${label}"><span class="stripe" style="background:${provColor(prov)}"></span><span class="dn">${d.getDate()}${d.getDate()===1?" Apr":""}${i===0?" Mar":""}</span><span class="pl">${label}</span>${day.m?`<span class="mode">${day.m}</span>`:""}</button>`;
+  }
+  el.innerHTML=h;
+  el.querySelectorAll("button.day").forEach(b=>b.onclick=()=>{selDay=+b.dataset.i; const s=P.days[selDay].s; selLeg=STOPS[s]?s:null; renderAll(false); focusStop(selLeg)});
+}
+
+function renderDetail(){
+  const P=PLANS[plan], i=selDay??0, day=P.days[i], st=STOPS[day.s];
+  const where=day.s==="plane"?"Overnight flight":day.s==="home"?"Home to Vancouver":st.name;
+  const chip=st?`<span class="chip"><span class="sw" style="background:${provColor(st.prov)}"></span>${st.prov}</span>`:`<span class="chip">In transit</span>`;
+  document.getElementById("detail").innerHTML=`<div class="eyebrow">${selDay==null?"Day 1 · tap any day":"Day "+(i+1)+" of 20"}</div>
+   <div class="when mono">${fmt(dateOf(i))} 2027${HOLIDAY.has(iso(dateOf(i)))?" · Qingming holiday":""}</div>
+   <h3>${where}</h3><div style="margin-top:8px">${chip}</div>
+   <p>${day.p}</p>${day.t?`<div class="travel">${day.m||""} ${day.t}</div>`:""}${day.n?`<div class="note">${day.n}</div>`:""}`;
+}
+
+function renderCompare(){
+  const el=document.getElementById("compare"); el.innerHTML="";
+  ["a","b"].forEach(k=>{
+    const P=PLANS[k], counts={};
+    P.days.forEach(d=>{const st=STOPS[d.s]; if(st) counts[st.prov]=(counts[st.prov]||0)+1});
+    const total=Object.values(counts).reduce((a,b)=>a+b,0);
+    const bars=Object.keys(PROV).filter(p=>counts[p]).map(p=>`<div style="flex:${counts[p]};background:${provColor(p)}" title="${p}: ${counts[p]} nights">${counts[p]}</div>`).join("");
+    const legend=Object.keys(PROV).map(p=>`<span><span class="sw" style="background:${provColor(p)}"></span> ${p} ${counts[p]||0}</span>`).join("");
+    const card=document.createElement("button");
+    card.type="button"; card.className="card cmp"+(k===plan?" active":""); card.style.textAlign="left"; card.style.cursor="pointer";
+    card.innerHTML=`<h3>${P.label} · ${P.title}</h3><div class="tag">${total} nights, ${legsOf(P).length} stops</div><div class="stack">${bars}</div><div class="legend" style="border:0;padding:10px 0 0">${legend}</div><ul>${P.pros.map(x=>`<li>${x}</li>`).join("")}</ul>`;
+    card.onclick=()=>setPlan(k);
+    el.appendChild(card);
+  });
+}
+
+function renderLegend(){
+  const provs=Object.keys(PROV).map(p=>`<span><span class="sw" style="background:${provColor(p)}"></span>${p}</span>`).join("");
+  document.getElementById("legend").innerHTML=provs+
+   `<span><span class="ln" style="border-color:var(--m-flight);border-top-style:dashed"></span>Flight</span><span><span class="ln" style="border-color:var(--m-train)"></span>Train</span><span><span class="ln" style="border-color:var(--m-road);border-top-style:dotted"></span>Road or hike</span>`;
+}
+
+/* ---------- Map (Leaflet + live tiles) ---------- */
+let map=null, routeLayer=null, provLayer=null, borderLayer=null;
+function decodeRing(c,off,scale){const out=[];let px=off[0],py=off[1];for(let i=0;i<c.length;i+=2){let x=c.charCodeAt(i)-64,y=c.charCodeAt(i+1)-64;x=(x>>1)^(-(x&1));y=(y>>1)^(-(y&1));x+=px;y+=py;px=x;py=y;out.push([x/scale,y/scale])}return out}
+let GEO=null;
+function chinaGeo(){
+  if(GEO) return GEO; const gj=window.__CHINA; if(!gj) return null;
+  const scale=gj.UTF8Scale||1024, feats=[];
+  gj.features.forEach(f=>{
+    if(!f.geometry||f.properties.name==="南海诸岛") return;
+    const g=f.geometry, multi=g.type==="MultiPolygon", polys=multi?g.coordinates:[g.coordinates], offs=multi?g.encodeOffsets:[g.encodeOffsets];
+    const dec=polys.map((poly,pi)=>poly.map((ring,ri)=>typeof ring==="string"?decodeRing(ring,offs[pi][ri],scale):ring));
+    feats.push({type:"Feature",properties:{name:f.properties.name},geometry:{type:"MultiPolygon",coordinates:dec}});
+  });
+  return GEO={type:"FeatureCollection",features:feats};
+}
+let OUTLINE=null;
+function chinaOutline(){
+  if(OUTLINE) return OUTLINE; const geo=chinaGeo(); if(!geo) return [];
+  const rings=[]; geo.features.forEach(f=>f.geometry.coordinates.forEach(p=>p.forEach(r=>rings.push(r))));
+  const k=p=>p[0].toFixed(2)+","+p[1].toFixed(2), count=new Map(), edges=[];
+  rings.forEach(r=>{for(let i=0;i<r.length;i++){const a=r[i],b=r[(i+1)%r.length],ka=k(a),kb=k(b);if(ka===kb)continue;const key=ka<kb?ka+"|"+kb:kb+"|"+ka;count.set(key,(count.get(key)||0)+1);edges.push([ka,kb,a,b,key])}});
+  const outer=edges.filter(e=>count.get(e[4])===1), from=new Map();
+  outer.forEach((e,i)=>{(from.get(e[0])||from.set(e[0],[]).get(e[0])).push(i)});
+  const used=new Uint8Array(outer.length), lines=[];
+  for(let i=0;i<outer.length;i++){ if(used[i]) continue;
+    used[i]=1; const pts=[outer[i][2],outer[i][3]]; let cur=outer[i][1];
+    for(;;){const nx=(from.get(cur)||[]).find(j=>!used[j]); if(nx==null) break; used[nx]=1; pts.push(outer[nx][3]); cur=outer[nx][1]}
+    let len=0; for(let j=1;j<pts.length;j++) len+=Math.hypot(pts[j][0]-pts[j-1][0],pts[j][1]-pts[j-1][1]);
+    if(len>1.2) lines.push(pts.map(p=>[p[1],p[0]])); // Leaflet wants [lat, lon]
+  }
+  return OUTLINE=lines;
+}
+const CHINA_BOUNDS=[[17.9,73.4],[53.6,135.1]];
+function initMap(){
+  map=L.map("map",{zoomSnap:.25,minZoom:3,maxZoom:17,scrollWheelZoom:false,attributionControl:true});
+  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:18,attribution:"Imagery © Esri, Maxar, Earthstar Geographics"});
+  const topo=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:18,attribution:"Tiles © Esri"});
+  const osm=L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"});
+  const names=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",{maxZoom:18,attribution:"Labels © Esri"});
+  sat.addTo(map);
+  L.control.layers({"Satellite":sat,"Terrain":topo,"Street map":osm},{"Place names":names},{position:"topright"}).addTo(map);
+  map.fitBounds(CHINA_BOUNDS);
+  map.on("click",()=>map.scrollWheelZoom.enable());
+  map.on("mouseout",()=>map.scrollWheelZoom.disable());
+  const geo=chinaGeo();
+  if(geo){
+    borderLayer=L.layerGroup(chinaOutline().map(c=>L.polyline(c,{color:css("--m-border"),weight:2.5,opacity:.95,interactive:false}))).addTo(map);
+  }
+  routeLayer=L.layerGroup().addTo(map);
+}
+function drawMap(){
+  if(!window.L){document.getElementById("map").innerHTML='<p style="padding:20px;color:#fff">The map could not load. Check your connection.</p>';return}
+  if(!map) initMap();
+  const P=PLANS[plan], legs=legsOf(P), nights={};
+  legs.forEach(l=>nights[l.s]=(nights[l.s]||0)+l.n);
+  // province shading
+  if(provLayer) map.removeLayer(provLayer);
+  const geo=chinaGeo(), cnToProv={}; Object.keys(PROV).forEach(p=>cnToProv[PROV[p].cn]=p);
+  const visited=new Set(legs.map(l=>STOPS[l.s].prov));
+  if(geo) provLayer=L.geoJSON({type:"FeatureCollection",features:geo.features.filter(f=>visited.has(cnToProv[f.properties.name]))},
+    {interactive:false,style:f=>{const c=provColor(cnToProv[f.properties.name]);return{color:c,weight:1.5,fillColor:c,fillOpacity:.28}}}).addTo(map);
+  if(borderLayer) borderLayer.eachLayer(l=>l.bringToFront());
+  // route + stops
+  routeLayer.clearLayers();
+  const col={flight:css("--m-flight"),train:css("--m-train"),road:css("--m-road")}, dash={flight:"8 7",train:null,road:"2 6"};
+  P.route.forEach(r=>{const a=STOPS[r[0]].ll,b=STOPS[r[1]].ll;
+    routeLayer.addLayer(L.polyline([[a[1],a[0]],[b[1],b[0]]],{color:col[r[2]],weight:r[2]==="flight"?2:3,dashArray:dash[r[2]],opacity:r[3]?.55:.95,interactive:false}))});
+  const used=new Set(); P.route.forEach(r=>{used.add(r[0]);used.add(r[1])});
+  [...used].forEach(id=>{const s=STOPS[id], n=nights[id]||0;
+    const m=L.circleMarker([s.ll[1],s.ll[0]],{radius:n?5+n*1.6:4,color:"#fff",weight:1.5,fillColor:s.prov?provColor(s.prov):css("--transit"),fillOpacity:selLeg&&selLeg!==id?.5:1});
+    m.bindTooltip(n?`${s.name} · ${n} ${n>1?"nights":"night"}`:s.name,{permanent:!(innerWidth<560&&!n),direction:labelDir(id),className:"stop-label"+(selLeg===id?" on":""),offset:labelOff(id)});
+    m.on("click",()=>{const l=legsOf(PLANS[plan]).find(x=>x.s===id);if(l){selLeg=l.s;selDay=l.start;renderAll(false);focusStop(id)}});
+    routeLayer.addLayer(m);
+  });
+}
+function labelDir(id){return({wall:"right",beijing:"left",zjj:"bottom",wuling:"right",fenghuang:"left",guilin:"right",yangshuo:"bottom",longji:"left",lijiang:"right",halfway:"left",shangri:"top",dali:"bottom",kunming:"right",guangzhou:"right"})[id]||"right"}
+function labelOff(id){const d=labelDir(id);return d==="left"?[-6,0]:d==="right"?[6,0]:d==="top"?[0,-6]:[0,6]}
+function focusStop(id){ if(!map||!id) return; const s=STOPS[id]; map.flyTo([s.ll[1],s.ll[0]],Math.max(map.getZoom(),9),{duration:.8}); }
+function showWholeTrip(){ if(map) map.flyToBounds(CHINA_BOUNDS,{duration:.8}); }
+
+function renderAll(withMap=true){renderHeader();renderStats();renderLegs();renderCal();renderDetail();renderCompare();renderLegend();drawMap()}
+function setPlan(k){plan=k;selDay=null;selLeg=null;try{history.replaceState(null,"","#plan-"+k)}catch(e){location.hash="plan-"+k}renderAll()}
+document.getElementById("btn-a").onclick=()=>setPlan("a");
+document.getElementById("btn-b").onclick=()=>setPlan("b");
+window.addEventListener("hashchange",()=>{const k=location.hash==="#plan-b"?"b":"a";if(k!==plan)setPlan(k)});
+if(location.hash==="#plan-b")plan="b";
+renderAll();
+document.getElementById("whole").onclick=()=>{selLeg=null;renderAll(false);showWholeTrip()};
+const mq=matchMedia("(prefers-color-scheme: dark)");
+const rerender=()=>renderAll();
+mq.addEventListener?mq.addEventListener("change",rerender):mq.addListener(rerender);
+new MutationObserver(rerender).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+</script>
+
+</body>
+</html>
