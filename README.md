@@ -1,9 +1,6 @@
-# China 2027
+# China Trip
 
-Trip dashboard for March–April 2027, live at https://china.benansari.ca
+Private trip page, published at https://china.benansari.ca
 
-- `index.html`: the whole page (plans, map, calendar, comparison)
-- `china-provinces.js`: province shapes (Apache ECharts map data, Apache 2.0)
-- `CNAME`: tells GitHub Pages to serve the site at china.benansari.ca
-
-Map tiles: Esri World Imagery / World Topo Map and OpenStreetMap, loaded live.
+`index.html` is password protected: the page content is encrypted (AES-256-GCM) and only decrypts in the browser with the right password.
+`china-provinces.js` holds public province outline data (Apache ECharts map data, Apache 2.0).
